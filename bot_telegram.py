@@ -558,6 +558,16 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("🔄 Retours sous 14 jours.", reply_markup=btn_retour())
     else:
         await update.message.reply_text("Merci 😊 Voici ce que je peux faire :", reply_markup=menu_principal())
+        # Transfère le message à l'admin
+        if uid != ADMIN_ID:
+            try:
+                await update.get_bot().send_message(
+                    ADMIN_ID,
+                    f"💬 *Message de {u.first_name} (@{u.username}) :*\n\n{txt}\n\n"
+                    f"👉 Pour répondre : `/repondre {uid} votre message`",
+                    parse_mode="Markdown"
+                )
+            except: pass
 
 # ── Photos (admin) ─────────────────────────────────────────────────────────────
 async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -580,6 +590,43 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         save(data)
         await update.message.reply_text("✅ Produit ajouté avec photo !", reply_markup=menu_admin())
 
+# ── Répondre à un client ───────────────────────────────────────────────────────
+async def repondre_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        await update.message.reply_text("⛔ Accès refusé.")
+        return
+    if len(context.args) < 2:
+        await update.message.reply_text(
+            "❌ Format : `/repondre USER_ID message`\n\nEx: `/repondre 123456789 Votre commande est prête !`",
+            parse_mode="Markdown"
+        )
+        return
+    try:
+        user_id = int(context.args[0])
+        message = " ".join(context.args[1:])
+        await update.get_bot().send_message(user_id, f"💬 *Message de la boutique :*\n\n{message}", parse_mode="Markdown")
+        await update.message.reply_text("✅ Message envoyé !")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Erreur : {e}")
+
+async def broadcast_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        await update.message.reply_text("⛔ Accès refusé.")
+        return
+    if not context.args:
+        await update.message.reply_text("Format : `/broadcast message`", parse_mode="Markdown")
+        return
+    message = " ".join(context.args)
+    data = load()
+    users = list(set([c["user_id"] for c in data["commandes"]]))
+    envoyes = 0
+    for uid in users:
+        try:
+            await update.get_bot().send_message(uid, f"📢 *Message de la boutique :*\n\n{message}", parse_mode="Markdown")
+            envoyes += 1
+        except: pass
+    await update.message.reply_text(f"✅ Message envoyé à {envoyes} clients !")
+
 # ── Main ───────────────────────────────────────────────────────────────────────
 def main():
     app = Application.builder().token(TOKEN).build()
@@ -591,6 +638,8 @@ def main():
     app.add_handler(CommandHandler("contact",       contact_cmd))
     app.add_handler(CommandHandler("mescommandes",  mescommandes_cmd))
     app.add_handler(CommandHandler("admin",         admin_cmd))
+    app.add_handler(CommandHandler("repondre",      repondre_cmd))
+    app.add_handler(CommandHandler("broadcast",     broadcast_cmd))
     app.add_handler(CallbackQueryHandler(callback))
     app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
