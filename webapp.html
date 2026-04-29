@@ -781,12 +781,18 @@ function renderCart() {
       <div class="cart-item-img">${item.photo ? `<img src="${item.photo}" alt="${item.nom}">` : '📦'}</div>
       <div class="cart-item-info">
         <div class="cart-item-name">${item.nom}</div>
-        <div class="cart-item-price">${item.prix} (x${item.qty})</div>
+        <div class="cart-item-price">${item.prix} x${item.qty}</div>
       </div>
       <button class="cart-item-remove" onclick="removeFromCart(${i})">✕</button>
     </div>
   `).join('');
-  const total = cart.reduce((s,c) => s+c.prix*c.qty, 0);
+  // Extraire les chiffres du prix pour calculer le total
+  function extractPrix(p) {
+    if (typeof p === 'number') return p;
+    const match = String(p).match(/(\d+)/);
+    return match ? parseInt(match[1]) : 0;
+  }
+  const total = cart.reduce((s,c) => s + extractPrix(c.prix) * c.qty, 0);
   const totalApres = remise ? Math.round(total*(1-remise/100)) : total;
   document.getElementById('cartTotal').textContent = totalApres + '€';
   footerEl.style.display = 'block';
