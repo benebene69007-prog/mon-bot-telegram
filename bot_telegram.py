@@ -426,8 +426,6 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     if not is_admin(uid): return
     data = load()
-    file = await (await update.message.photo[-1].get_file()).download_as_bytearray()
-    # Utiliser file_id pour stocker
     photo_file_id = update.message.photo[-1].file_id
 
     if context.user_data.get("ajout_etape") == "photo":
@@ -453,4 +451,4 @@ def main():
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
-    main
+    main()
