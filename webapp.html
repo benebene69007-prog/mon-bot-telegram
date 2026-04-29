@@ -830,21 +830,11 @@ async function passerCommande() {
 
   const orderData = {
     items: cart.map(c => ({ nom: c.nom, qty: c.qty, prix: c.prix })),
-    total: totalApres, remise, adresse, telephone: tel,
-    user: tg ? tg.initDataUnsafe?.user : null
+    total: totalApres, remise, adresse, telephone: tel
   };
 
-  try {
-    // Envoyer via fetch au bot
-    const resp = await fetch('https://mon-bot-telegram-production-d0ae.up.railway.app/commande', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(orderData)
-    });
-    if (!resp.ok) throw new Error('Erreur serveur');
-  } catch(e) {
-    // Fallback: sendData si fetch échoue
-    if (tg) tg.sendData(JSON.stringify(orderData));
+  if (tg && tg.sendData) {
+    tg.sendData(JSON.stringify(orderData));
   }
 
   closeCart();
