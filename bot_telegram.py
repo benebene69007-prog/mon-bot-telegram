@@ -43,12 +43,22 @@ def get_webapp_url():
 class WebHandler(BaseHTTPRequestHandler):
     def log_message(self, *args): pass
     def do_GET(self):
-        fname = "webapp.html"
+        path = self.path.split("?")[0].lstrip("/")
+        if path == "" or path == "webapp.html":
+            fname = "webapp.html"
+        elif path.startswith("media/"):
+            fname = path
+        else:
+            fname = "webapp.html"
         if os.path.exists(fname):
             with open(fname, "rb") as f: content = f.read()
             self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
+            if fname.endswith(".mp4"): ct = "video/mp4"
+            elif fname.endswith(".jpg") or fname.endswith(".jpeg"): ct = "image/jpeg"
+            else: ct = "text/html; charset=utf-8"
+            self.send_header("Content-Type", ct)
             self.send_header("Content-Length", str(len(content)))
+            self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             self.wfile.write(content)
         else:
@@ -481,18 +491,19 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = load()
     video = update.message.video
     file = await video.get_file()
-    video_url = file.file_path  # URL publique Telegram
+    # Télécharger et sauvegarder localement
+    os.makedirs("media", exist_ok=True)
+    fname = f"media/video_{uid}_{int(datetime.now().timestamp())}.mp4"
+    await file.download_to_drive(fname)
+    media_url = f"https://mon-bot-telegram-production-d0ae.up.railway.app/{fname}"
 
     if context.user_data.get("ajout_etape") == "photo":
-        context.user_data["nouveau_produit"]["photo"] = video_url
-        context.user_data["nouveau_produit"]["video"] = ""
+        context.user_data["nouveau_produit"]["photo"] = media_url
         context.user_data["ajout_etape"] = "badge"
         await update.message.reply_text("✅ Vidéo enregistrée !\n\n5️⃣ *Badge* (ex: Nouveau) ou SKIP :", parse_mode="Markdown")
     elif context.user_data.get("edit_field") == "photo" and "edit_index" in context.user_data:
         i = context.user_data.pop("edit_index"); context.user_data.pop("edit_field")
-        data["produits"][i]["photo"] = video_url
-        data["produits"][i]["video"] = ""
-        save(data)
+        data["produits"][i]["photo"] = media_url; save(data)
         await update.message.reply_text("✅ Vidéo mise à jour !", reply_markup=menu_admin())
 
 async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -501,14 +512,19 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = load()
     photo = update.message.photo[-1]
     file = await photo.get_file()
-    photo_url = file.file_path
+    # Télécharger et sauvegarder localement
+    os.makedirs("media", exist_ok=True)
+    fname = f"media/photo_{uid}_{int(datetime.now().timestamp())}.jpg"
+    await file.download_to_drive(fname)
+    media_url = f"https://mon-bot-telegram-production-d0ae.up.railway.app/{fname}"
+
     if context.user_data.get("ajout_etape") == "photo":
-        context.user_data["nouveau_produit"]["photo"] = photo_url
+        context.user_data["nouveau_produit"]["photo"] = media_url
         context.user_data["ajout_etape"] = "badge"
-        await update.message.reply_text("✅ Photo !\n\n5️⃣ *Badge* (ex: Nouveau) ou SKIP :", parse_mode="Markdown")
+        await update.message.reply_text("✅ Photo enregistrée !\n\n5️⃣ *Badge* (ex: Nouveau) ou SKIP :", parse_mode="Markdown")
     elif context.user_data.get("edit_field") == "photo" and "edit_index" in context.user_data:
         i = context.user_data.pop("edit_index"); context.user_data.pop("edit_field")
-        data["produits"][i]["photo"] = photo_url; save(data)
+        data["produits"][i]["photo"] = media_url; save(data)
         await update.message.reply_text("✅ Photo mise à jour !", reply_markup=menu_admin())
 
 def main():
