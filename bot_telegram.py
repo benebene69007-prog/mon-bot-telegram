@@ -64,7 +64,7 @@ def menu_principal():
         [InlineKeyboardButton("📦 Commander",          callback_data="menu_commander")],
         [InlineKeyboardButton("📋 Mes commandes",      callback_data="mes_commandes")],
         [InlineKeyboardButton("🎧 Support",            callback_data="support")],
-        [InlineKeyboardButton("📞 Contact",            callback_data="contact")],
+        [InlineKeyboardButton("📱 Signal",            callback_data="contact")],
     ])
 
 def menu_produits_commander(panier=[]):
@@ -100,6 +100,7 @@ def menu_admin():
         [InlineKeyboardButton("📋 Commandes",       callback_data="admin_commandes")],
         [InlineKeyboardButton("📊 Stats",           callback_data="admin_stats")],
         [InlineKeyboardButton("🎟️ Codes promo",    callback_data="admin_promos")],
+        [InlineKeyboardButton("📱 Numéro support",  callback_data="admin_support")],
         [InlineKeyboardButton("✏️ Message /start",  callback_data="admin_bienvenue")],
         [InlineKeyboardButton("🌐 Voir boutique",   web_app=WebAppInfo(url=get_webapp_url()))],
     ])
@@ -184,7 +185,8 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif d == "support":
         await q.edit_message_text("🎧 *Support*\n\n📧 contact@alloj arrive69.com\n📱 +33 6 00 00 00 00", parse_mode="Markdown", reply_markup=btn_retour())
     elif d == "contact":
-        await q.edit_message_text("📞 *Contact*\n\n📱 +33 6 00 00 00 00\n📧 contact@alloj arrive69.com\n🕐 Lun–Ven 9h–18h", parse_mode="Markdown", reply_markup=btn_retour())
+        support_tel = data.get("support_tel", "Non défini")
+        await q.edit_message_text(f"📱 *Signal*\n\n{support_tel}", parse_mode="Markdown", reply_markup=btn_retour())
     elif d == "mes_commandes":
         mes = [c for c in data["commandes"] if c["user_id"] == uid]
         if not mes:
@@ -280,6 +282,14 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         promos = data.get("codes_promo", {})
         texte = "🎟️ *Codes promo :*\n\n" + "\n".join([f"• `{k}` → -{v}%" for k,v in promos.items()]) + "\n\nAjouter : `AJOUTER_CODE NOM REMISE`"
         await q.edit_message_text(texte, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Retour", callback_data="admin_menu")]]))
+    elif d == "admin_support" and is_admin(uid):
+        data = load()
+        current = data.get("support_tel", "Non défini")
+        context.user_data["edit_field"] = "support_tel"
+        await q.edit_message_text(
+            f"📱 *Numéro de support actuel :*\n{current}\n\nEnvoie le nouveau numéro :",
+            parse_mode="Markdown"
+        )
     elif d == "admin_bienvenue" and is_admin(uid):
         context.user_data["edit_field"] = "bienvenue"
         await q.edit_message_text("✏️ Envoie le nouveau message. Utilise *{prenom}* pour le prénom.", parse_mode="Markdown")
@@ -315,6 +325,10 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if is_admin(uid) and context.user_data.get("edit_field") == "bienvenue":
         data["bienvenue"] = txt; save(data); context.user_data.pop("edit_field")
         await update.message.reply_text("✅ Mis à jour !", reply_markup=menu_admin()); return
+
+    if is_admin(uid) and context.user_data.get("edit_field") == "support_tel":
+        data["support_tel"] = txt; save(data); context.user_data.pop("edit_field")
+        await update.message.reply_text(f"✅ Numéro de support mis à jour : {txt}", reply_markup=menu_admin()); return
 
     # Admin: modifier champ produit
     if is_admin(uid) and "edit_field" in context.user_data and "edit_index" in context.user_data:
@@ -494,3 +508,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
