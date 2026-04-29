@@ -660,15 +660,52 @@ function renderProduits() {
 
 function openProduct(i) {
   currentProduct = i; currentQty = 1;
+  window.selectedVariante = 0;
   const p = produits[i];
   document.getElementById('modalName').textContent = p.nom;
-  document.getElementById('modalPrice').textContent = p.prix + '€ / unité';
   document.getElementById('modalDesc').textContent = p.desc;
-  document.getElementById('qtyValue').textContent = 1;
-  document.getElementById('modalTotal').textContent = p.prix + '€';
   const imgEl = document.getElementById('modalImg');
   imgEl.innerHTML = p.photo ? `<img src="${p.photo}" alt="${p.nom}">` : '📦';
+
+  const variantesContainer = document.getElementById('variantesContainer');
+  const variantesList = document.getElementById('variantesList');
+  const qtyControl = document.getElementById('qtyControl');
+  const modalPrice = document.getElementById('modalPrice');
+
+  if (p.variantes && p.variantes.length > 0) {
+    variantesContainer.style.display = 'block';
+    qtyControl.style.display = 'none';
+    modalPrice.textContent = '';
+    variantesList.innerHTML = p.variantes.map((v, vi) => `
+      <div onclick="selectVariante(${vi})" id="variante_${vi}" style="
+        background:var(--card);border:2px solid ${vi===0?'var(--accent)':'var(--border)'};
+        border-radius:12px;padding:14px 16px;cursor:pointer;
+        display:flex;justify-content:space-between;align-items:center;transition:all 0.2s;
+      ">
+        <span style="font-weight:600;font-size:15px">${v.quantite}</span>
+        <span style="color:var(--accent);font-family:'Bebas Neue',sans-serif;font-size:22px">${v.prix}</span>
+      </div>
+    `).join('');
+    document.getElementById('modalTotal').textContent = p.variantes[0].prix;
+  } else {
+    variantesContainer.style.display = 'none';
+    qtyControl.style.display = 'flex';
+    modalPrice.textContent = p.prix || '';
+    document.getElementById('qtyValue').textContent = 1;
+    document.getElementById('modalTotal').textContent = p.prix || '';
+  }
+
   document.getElementById('productModal').classList.add('open');
+}
+
+function selectVariante(vi) {
+  const p = produits[currentProduct];
+  window.selectedVariante = vi;
+  p.variantes.forEach((v, idx) => {
+    const el = document.getElementById(`variante_${idx}`);
+    if (el) el.style.borderColor = idx === vi ? 'var(--accent)' : 'var(--border)';
+  });
+  document.getElementById('modalTotal').textContent = p.variantes[vi].prix;
 }
 
 function closeModal(e) {
@@ -679,14 +716,30 @@ function closeModal(e) {
 function changeQty(delta) {
   currentQty = Math.max(1, currentQty + delta);
   document.getElementById('qtyValue').textContent = currentQty;
-  document.getElementById('modalTotal').textContent = (produits[currentProduct].prix * currentQty) + '€';
+  const p = produits[currentProduct];
+  document.getElementById('modalTotal').textContent = `${p.prix} x${currentQty}`;
 }
 
 function addToCart() {
   const p = produits[currentProduct];
-  const ex = cart.find(c => c.id === currentProduct);
-  if (ex) ex.qty += currentQty;
-  else cart.push({ id: currentProduct, nom: p.nom, prix: p.prix, photo: p.photo, qty: currentQty });
+  let nomPanier, prixPanier, qtyPanier;
+
+  if (p.variantes && p.variantes.length > 0) {
+    const v = p.variantes[window.selectedVariante || 0];
+    nomPanier = `${p.nom} (${v.quantite})`;
+    prixPanier = v.prix;
+    qtyPanier = 1;
+  } else {
+    nomPanier = p.nom;
+    prixPanier = p.prix;
+    qtyPanier = currentQty;
+  }
+
+  const key = `${currentProduct}_${window.selectedVariante}`;
+  const ex = cart.find(c => c.key === key);
+  if (ex) ex.qty += qtyPanier;
+  else cart.push({ key, id: currentProduct, nom: nomPanier, prix: prixPanier, photo: p.photo, qty: qtyPanier });
+
   updateCartCount();
   document.getElementById('productModal').classList.remove('open');
   if (tg) tg.HapticFeedback?.impactOccurred('light');
@@ -694,8 +747,13 @@ function addToCart() {
 
 function quickAdd(i) {
   const p = produits[i];
-  const ex = cart.find(c => c.id === i);
-  if (ex) ex.qty++; else cart.push({ id: i, nom: p.nom, prix: p.prix, photo: p.photo, qty: 1 });
+  if (p.variantes && p.variantes.length > 0) {
+    openProduct(i); return;
+  }
+  const key = `${i}_null`;
+  const ex = cart.find(c => c.key === key);
+  if (ex) ex.qty++;
+  else cart.push({ key, id: i, nom: p.nom, prix: p.prix, photo: p.photo, qty: 1 });
   updateCartCount();
   if (tg) tg.HapticFeedback?.impactOccurred('light');
 }
@@ -723,7 +781,7 @@ function renderCart() {
       <div class="cart-item-img">${item.photo ? `<img src="${item.photo}" alt="${item.nom}">` : '📦'}</div>
       <div class="cart-item-info">
         <div class="cart-item-name">${item.nom}</div>
-        <div class="cart-item-price">${item.prix * item.qty}€ (x${item.qty})</div>
+        <div class="cart-item-price">${item.prix} (x${item.qty})</div>
       </div>
       <button class="cart-item-remove" onclick="removeFromCart(${i})">✕</button>
     </div>
