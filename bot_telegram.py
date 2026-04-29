@@ -198,7 +198,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = load()
     u = update.effective_user
     texte = data["bienvenue"].replace("{prenom}", u.first_name)
-    await update.message.reply_text(texte, parse_mode="Markdown", reply_markup=menu_principal())
+    # Bouton inline WebApp pour que sendData fonctionne
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🛍️ Ouvrir la boutique", web_app=WebAppInfo(url=get_webapp_url()))],
+        [InlineKeyboardButton("📋 Mes commandes",      callback_data="mes_commandes")],
+        [InlineKeyboardButton("⭐ Avis clients",        callback_data="voir_avis")],
+        [InlineKeyboardButton("🎧 Support",            callback_data="support")],
+        [InlineKeyboardButton("📞 Contact",            callback_data="contact")],
+    ])
+    await update.message.reply_text(texte, parse_mode="Markdown", reply_markup=kb)
 
 async def admin_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
