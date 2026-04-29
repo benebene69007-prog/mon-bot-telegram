@@ -201,18 +201,6 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         i = int(d.split("_")[2])
         p = data["produits"][i]
         texte = f"*{p['nom']}*\n\n📝 {p.get('desc','')}\n\n📦 Choisir la quantité :"
-        if p.get("video"):
-            try:
-                await q.delete_message()
-                await q.message.chat.send_video(video=p["video"], caption=texte, parse_mode="Markdown", reply_markup=menu_variantes(i))
-                return
-            except: pass
-        elif p.get("photo"):
-            try:
-                await q.delete_message()
-                await q.message.chat.send_photo(photo=p["photo"], caption=texte, parse_mode="Markdown", reply_markup=menu_variantes(i))
-                return
-            except: pass
         await q.edit_message_text(texte, parse_mode="Markdown", reply_markup=menu_variantes(i))
 
     elif d.startswith("cmd_variante_"):
