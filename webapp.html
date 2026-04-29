@@ -836,7 +836,7 @@ async function passerCommande() {
 
   try {
     // Envoyer via fetch au bot
-    const resp = await fetch('/commande', {
+    const resp = await fetch('https://mon-bot-telegram-production-d0ae.up.railway.app/commande', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(orderData)
