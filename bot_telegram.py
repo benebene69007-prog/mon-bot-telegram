@@ -64,7 +64,7 @@ def menu_principal():
         [InlineKeyboardButton("📦 Commander",          callback_data="menu_commander")],
         [InlineKeyboardButton("📋 Mes commandes",      callback_data="mes_commandes")],
         [InlineKeyboardButton("🎧 Support",            callback_data="support")],
-        [InlineKeyboardButton("📱 Signal",            callback_data="contact")],
+        [InlineKeyboardButton("📱 Contact Signal",    callback_data="contact")],
     ])
 
 def menu_produits_commander(panier=[]):
@@ -200,9 +200,14 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif d.startswith("cmd_produit_"):
         i = int(d.split("_")[2])
         p = data["produits"][i]
-        # Afficher photo si disponible
         texte = f"*{p['nom']}*\n\n📝 {p.get('desc','')}\n\n📦 Choisir la quantité :"
-        if p.get("photo"):
+        if p.get("video"):
+            try:
+                await q.message.reply_video(video=p["video"], caption=texte, parse_mode="Markdown", reply_markup=menu_variantes(i))
+                await q.delete_message()
+                return
+            except: pass
+        elif p.get("photo"):
             try:
                 await q.message.reply_photo(photo=p["photo"], caption=texte, parse_mode="Markdown", reply_markup=menu_variantes(i))
                 await q.delete_message()
@@ -476,7 +481,23 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except: pass
 
 # ── Photos admin ───────────────────────────────────────────────────────────────
-async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if not is_admin(uid): return
+    data = load()
+    video_file_id = update.message.video.file_id
+
+    if context.user_data.get("ajout_etape") == "photo":
+        context.user_data["nouveau_produit"]["photo"] = ""
+        context.user_data["nouveau_produit"]["video"] = video_file_id
+        context.user_data["ajout_etape"] = "badge"
+        await update.message.reply_text("✅ Vidéo enregistrée !\n\n5️⃣ *Badge* (ex: Nouveau) ou SKIP :", parse_mode="Markdown")
+    elif context.user_data.get("edit_field") == "photo" and "edit_index" in context.user_data:
+        i = context.user_data.pop("edit_index"); context.user_data.pop("edit_field")
+        data["produits"][i]["video"] = video_file_id
+        data["produits"][i]["photo"] = ""
+        save(data)
+        await update.message.reply_text("✅ Vidéo mise à jour !", reply_markup=menu_admin())
     uid = update.effective_user.id
     if not is_admin(uid): return
     data = load()
@@ -502,10 +523,10 @@ def main():
     app.add_handler(CommandHandler("broadcast", broadcast_cmd))
     app.add_handler(CallbackQueryHandler(callback))
     app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
+    app.add_handler(MessageHandler(filters.VIDEO, video_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
     print("✅ Bot Allo J'arrive 69 lancé !")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
     main()
-
