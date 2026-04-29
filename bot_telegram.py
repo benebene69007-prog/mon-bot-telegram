@@ -258,13 +258,13 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await q.edit_message_text("✏️ Nouveau *nom* :", parse_mode="Markdown")
     elif d.startswith("admin_edit_prix_") and is_admin(uid):
         context.user_data["edit_index"] = int(d.split("_")[3]); context.user_data["edit_field"] = "prix"
-        await q.edit_message_text("💰 Nouveau *prix* (chiffre) :", parse_mode="Markdown")
+        await q.edit_message_text("💰 Nouveau *prix* — écris comme tu veux !\nEx: `5€/100g`, `10€ le kg`, `3€ pièce`", parse_mode="Markdown")
     elif d.startswith("admin_edit_desc_") and is_admin(uid):
         context.user_data["edit_index"] = int(d.split("_")[3]); context.user_data["edit_field"] = "desc"
         await q.edit_message_text("📝 Nouvelle *description* :", parse_mode="Markdown")
     elif d.startswith("admin_edit_photo_") and is_admin(uid):
         context.user_data["edit_index"] = int(d.split("_")[3]); context.user_data["edit_field"] = "photo"
-        await q.edit_message_text("📸 Envoie le *lien URL* de la photo (https://...) :", parse_mode="Markdown")
+        await q.edit_message_text("📸 Envoie la *photo* directement ici :", parse_mode="Markdown")
     elif d.startswith("admin_edit_badge_") and is_admin(uid):
         context.user_data["edit_index"] = int(d.split("_")[3]); context.user_data["edit_field"] = "badge"
         await q.edit_message_text("🏷️ Badge (ex: Nouveau, Hot) ou SKIP :", parse_mode="Markdown")
@@ -314,8 +314,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         i = context.user_data.pop("edit_index")
         if field == "badge" and txt.upper() == "SKIP": data["produits"][i][field] = ""
         elif field == "prix":
-            try: data["produits"][i][field] = int(txt)
-            except: data["produits"][i][field] = txt
+            data["produits"][i][field] = txt
         else: data["produits"][i][field] = txt
         save(data)
         p = data["produits"][i]
@@ -326,17 +325,34 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         etape = context.user_data["ajout_etape"]
         if etape == "nom":
             context.user_data["nouveau_produit"]["nom"] = txt
-            context.user_data["ajout_etape"] = "prix"
-            await update.message.reply_text("2️⃣ *Prix* en chiffre (ex: 30) :", parse_mode="Markdown")
-        elif etape == "prix":
-            try: context.user_data["nouveau_produit"]["prix"] = int(txt)
-            except: context.user_data["nouveau_produit"]["prix"] = txt
+            context.user_data["nouveau_produit"]["variantes"] = []
+            context.user_data["ajout_etape"] = "variantes"
+            await update.message.reply_text(
+                "2️⃣ *Variantes de quantité/prix*\n\n"
+                "Envoie chaque variante sur une ligne comme ça :\n"
+                "`100g - 20€`\n`200g - 50€`\n`1kg - 300€`\n\n"
+                "Envoie toutes tes variantes en un seul message 👇",
+                parse_mode="Markdown"
+            )
+        elif etape == "variantes":
+            lignes = [l.strip() for l in txt.split("\n") if l.strip()]
+            variantes = []
+            for l in lignes:
+                if " - " in l:
+                    parts = l.split(" - ", 1)
+                    variantes.append({"quantite": parts[0].strip(), "prix": parts[1].strip()})
+                else:
+                    variantes.append({"quantite": l, "prix": ""})
+            context.user_data["nouveau_produit"]["variantes"] = variantes
+            # Prix principal = première variante
+            context.user_data["nouveau_produit"]["prix"] = variantes[0]["prix"] if variantes else ""
             context.user_data["ajout_etape"] = "desc"
-            await update.message.reply_text("3️⃣ *Description* :", parse_mode="Markdown")
+            recap = "\n".join([f"  • {v['quantite']} → {v['prix']}" for v in variantes])
+            await update.message.reply_text(f"✅ Variantes enregistrées :\n{recap}\n\n3️⃣ *Description* du produit :", parse_mode="Markdown")
         elif etape == "desc":
             context.user_data["nouveau_produit"]["desc"] = txt
             context.user_data["ajout_etape"] = "photo"
-            await update.message.reply_text("4️⃣ *Lien URL* de la photo (ou SKIP) :", parse_mode="Markdown")
+            await update.message.reply_text("4️⃣ 📸 Envoie la *photo* du produit directement ici, ou tape SKIP :", parse_mode="Markdown")
         elif etape == "photo":
             context.user_data["nouveau_produit"]["photo"] = "" if txt.upper() == "SKIP" else txt
             context.user_data["ajout_etape"] = "badge"
@@ -363,6 +379,32 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.get_bot().send_message(ADMIN_ID, f"💬 *{u.first_name} (@{u.username}) :*\n\n{txt}\n\n👉 `/repondre {uid} message`", parse_mode="Markdown")
         except: pass
 
+async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if not is_admin(uid): return
+    data = load()
+
+    # Photo pendant ajout produit
+    if context.user_data.get("ajout_etape") == "photo":
+        photo = update.message.photo[-1]
+        file = await photo.get_file()
+        photo_url = file.file_path  # URL directe Telegram
+        context.user_data["nouveau_produit"]["photo"] = photo_url
+        context.user_data["ajout_etape"] = "badge"
+        await update.message.reply_text("✅ Photo enregistrée !\n\n5️⃣ *Badge* (ex: Nouveau, Hot) ou SKIP :", parse_mode="Markdown")
+        return
+
+    # Photo pour modifier un produit existant
+    if context.user_data.get("edit_field") == "photo" and "edit_index" in context.user_data:
+        i = context.user_data.pop("edit_index")
+        context.user_data.pop("edit_field")
+        photo = update.message.photo[-1]
+        file = await photo.get_file()
+        data["produits"][i]["photo"] = file.file_path
+        save(data)
+        await update.message.reply_text("✅ Photo mise à jour !", reply_markup=menu_admin())
+        return
+
 def main():
     # Démarrer le serveur web dans un thread séparé
     web_thread = threading.Thread(target=start_web_server, daemon=True)
@@ -375,6 +417,7 @@ def main():
     app.add_handler(CommandHandler("broadcast",  broadcast_cmd))
     app.add_handler(CallbackQueryHandler(callback))
     app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, webapp_data))
+    app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
     print("✅ Bot Allo J'arrive 69 lancé !")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
