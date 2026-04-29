@@ -487,6 +487,11 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = load()
     video_file_id = update.message.video.file_id
 
+async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if not is_admin(uid): return
+    data = load()
+    video_file_id = update.message.video.file_id
     if context.user_data.get("ajout_etape") == "photo":
         context.user_data["nouveau_produit"]["photo"] = ""
         context.user_data["nouveau_produit"]["video"] = video_file_id
@@ -498,13 +503,14 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         data["produits"][i]["photo"] = ""
         save(data)
         await update.message.reply_text("✅ Vidéo mise à jour !", reply_markup=menu_admin())
+
+async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     if not is_admin(uid): return
     data = load()
     photo = update.message.photo[-1]
     file = await photo.get_file()
-    photo_url = file.file_path  # URL publique Telegram
-
+    photo_url = file.file_path
     if context.user_data.get("ajout_etape") == "photo":
         context.user_data["nouveau_produit"]["photo"] = photo_url
         context.user_data["ajout_etape"] = "badge"
