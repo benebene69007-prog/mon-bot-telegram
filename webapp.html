@@ -533,7 +533,13 @@
       <div class="modal-name" id="modalName"></div>
       <div class="modal-price" id="modalPrice"></div>
       <div class="modal-desc" id="modalDesc"></div>
-      <div class="qty-control">
+      <!-- Variantes -->
+      <div id="variantesContainer" style="margin-bottom:18px;display:none">
+        <div style="font-size:13px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--text-muted);margin-bottom:10px">Choisir la quantité</div>
+        <div id="variantesList" style="display:flex;flex-direction:column;gap:8px"></div>
+      </div>
+      <!-- Qty classique -->
+      <div class="qty-control" id="qtyControl">
         <span class="qty-label">Quantité</span>
         <div class="qty-buttons">
           <button class="qty-btn" onclick="changeQty(-1)">−</button>
@@ -626,7 +632,15 @@ function renderProduits() {
     </div>`;
     return;
   }
-  grid.innerHTML = produits.map((p, i) => `
+  grid.innerHTML = produits.map((p, i) => {
+    // Prix affiché dans la grille
+    let prixAffiche = '';
+    if (p.variantes && p.variantes.length > 0) {
+      prixAffiche = `À partir de ${p.variantes[0].prix}`;
+    } else {
+      prixAffiche = p.prix || '';
+    }
+    return `
     <div class="product-card" style="animation-delay:${i*0.08}s" onclick="openProduct(${i})">
       <div class="product-img">
         ${p.photo ? `<img src="${p.photo}" alt="${p.nom}" onerror="this.style.display='none'">` : '📦'}
@@ -636,12 +650,12 @@ function renderProduits() {
         <div class="product-name">${p.nom}</div>
         <div class="product-desc">${p.desc}</div>
         <div class="product-footer">
-          <div class="product-price">${p.prix}€</div>
+          <div class="product-price" style="font-size:14px">${prixAffiche}</div>
           <button class="add-btn" onclick="event.stopPropagation();quickAdd(${i})">+</button>
         </div>
       </div>
     </div>
-  `).join('');
+  `}).join('');
 }
 
 function openProduct(i) {
