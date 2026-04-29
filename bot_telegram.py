@@ -67,11 +67,14 @@ def menu_principal():
         [InlineKeyboardButton("📞 Contact",            callback_data="contact")],
     ])
 
-def menu_produits_commander():
+def menu_produits_commander(panier=[]):
     data = load()
     kb = []
     for i, p in enumerate(data["produits"]):
         kb.append([InlineKeyboardButton(f"{p['nom']}", callback_data=f"cmd_produit_{i}")])
+    if panier:
+        kb.append([InlineKeyboardButton(f"✅ Valider le panier ({len(panier)} article{'s' if len(panier)>1 else ''})", callback_data="cmd_valider_panier")])
+        kb.append([InlineKeyboardButton("🗑️ Vider le panier", callback_data="cmd_vider_panier")])
     kb.append([InlineKeyboardButton("⬅️ Retour", callback_data="menu")])
     return InlineKeyboardMarkup(kb)
 
@@ -169,7 +172,15 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not data["produits"]:
             await q.edit_message_text("📦 Pas encore de produits disponibles.", reply_markup=btn_retour())
         else:
-            await q.edit_message_text("🛍️ *Choisir un produit :*", parse_mode="Markdown", reply_markup=menu_produits_commander())
+            panier = context.user_data.get("panier", [])
+            recap = ""
+            if panier:
+                recap = "\n\n🛒 *Panier en cours :*\n" + "\n".join([f"  • {p['nom']} x{p['qty']}" for p in panier])
+            await q.edit_message_text(
+                f"🛍️ *Choisir un produit :*{recap}",
+                parse_mode="Markdown",
+                reply_markup=menu_produits_commander(panier)
+            )
     elif d == "support":
         await q.edit_message_text("🎧 *Support*\n\n📧 contact@alloj arrive69.com\n📱 +33 6 00 00 00 00", parse_mode="Markdown", reply_markup=btn_retour())
     elif d == "contact":
@@ -215,6 +226,21 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"✅ *{nom_cmd}* — {prix_cmd}\n\n🔢 Combien d'unités veux-tu ?\n(envoie un chiffre ex: 1, 2, 3...)",
             parse_mode="Markdown"
         )
+
+    elif d == "cmd_valider_panier":
+        panier = context.user_data.get("panier", [])
+        if not panier:
+            await q.edit_message_text("🛒 Ton panier est vide !", reply_markup=menu_principal()); return
+        recap = "\n".join([f"  • {p['nom']} x{p['qty']} — {p['prix']}" for p in panier])
+        context.user_data["cmd_etape"] = "promo"
+        await q.edit_message_text(
+            f"🛒 *Ton panier :*\n{recap}\n\n🎟️ Tu as un code promo ? Envoie-le ou tape *NON*",
+            parse_mode="Markdown"
+        )
+
+    elif d == "cmd_vider_panier":
+        context.user_data["panier"] = []
+        await q.edit_message_text("🗑️ Panier vidé !", reply_markup=menu_principal())
 
     # ── Admin ──
     elif d == "admin_menu" and is_admin(uid):
@@ -345,11 +371,26 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if quantite < 1: raise ValueError()
         except:
             await update.message.reply_text("❌ Envoie un chiffre (ex: 1, 2, 3...)"); return
-        context.user_data["cmd_quantite"] = quantite
-        context.user_data["cmd_etape"] = "promo"
+        
+        # Ajouter au panier
+        if "panier" not in context.user_data:
+            context.user_data["panier"] = []
+        context.user_data["panier"].append({
+            "nom": context.user_data.get("cmd_nom",""),
+            "prix": context.user_data.get("cmd_prix",""),
+            "qty": quantite
+        })
+        panier = context.user_data["panier"]
+        recap = "\n".join([f"  • {p['nom']} x{p['qty']} — {p['prix']}" for p in panier])
+        context.user_data.pop("cmd_etape")
+        
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("➕ Ajouter un autre produit", callback_data="menu_commander")],
+            [InlineKeyboardButton("✅ Valider la commande", callback_data="cmd_valider_panier")],
+        ])
         await update.message.reply_text(
-            f"✅ *{context.user_data['cmd_nom']}* x{quantite}\n💰 {context.user_data['cmd_prix']}\n\n🎟️ Tu as un code promo ? Envoie-le ou tape *NON*",
-            parse_mode="Markdown"
+            f"✅ Ajouté au panier !\n\n🛒 *Panier :*\n{recap}",
+            parse_mode="Markdown", reply_markup=kb
         )
         return
 
@@ -373,41 +414,40 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if context.user_data.get("cmd_etape") == "telephone":
-        nom = context.user_data.get("cmd_nom", "")
-        prix = context.user_data.get("cmd_prix", "")
-        quantite = context.user_data.get("cmd_quantite", 1)
+        panier = context.user_data.get("panier", [])
         adresse = context.user_data.get("cmd_adresse", "")
         remise = context.user_data.get("cmd_remise", 0)
         telephone = txt
 
         cmd_id = f"CMD{data.get('compteur_commande',1):03d}"
         data["compteur_commande"] = data.get("compteur_commande",1) + 1
+        
+        items_text = "\n".join([f"  • {p['nom']} x{p['qty']} — {p['prix']}" for p in panier])
+        produits_str = ", ".join([f"{p['nom']} x{p['qty']}" for p in panier])
+        
         commande = {
             "id": cmd_id, "user": f"{u.first_name} (@{u.username})", "user_id": uid,
-            "produit": nom, "quantite": quantite, "total": prix, "remise": remise,
+            "produit": produits_str, "items": panier, "remise": remise,
             "adresse": adresse, "telephone": telephone,
             "statut": "📦 Commande reçue", "date": datetime.now().strftime("%d/%m/%Y %H:%M"),
         }
         data["commandes"].append(commande); save(data)
 
-        # Vider
-        for k in ["cmd_etape","cmd_nom","cmd_prix","cmd_quantite","cmd_adresse","cmd_remise"]:
+        # Vider panier et données commande
+        for k in ["cmd_etape","cmd_nom","cmd_prix","cmd_adresse","cmd_remise","panier"]:
             context.user_data.pop(k, None)
 
-        # Confirmation client
         await update.message.reply_text(
-            f"✅ *Commande #{cmd_id} confirmée !*\n\n"
-            f"📦 {nom} x{quantite}\n💰 {prix}\n"
+            f"✅ *Commande #{cmd_id} confirmée !*\n\n{items_text}\n\n"
             f"🎟️ Remise : {remise}%\n📍 {adresse}\n📱 {telephone}\n"
             f"💵 Paiement en espèces à la livraison 🙏",
             parse_mode="Markdown", reply_markup=menu_principal()
         )
-        # Notification admin
         await update.get_bot().send_message(
             ADMIN_ID,
             f"🛒 *Nouvelle commande #{cmd_id} !*\n\n"
             f"👤 {u.first_name} (@{u.username})\n🆔 `{uid}`\n\n"
-            f"📦 {nom} x{quantite}\n💰 {prix}\n"
+            f"{items_text}\n\n"
             f"🎟️ Remise : {remise}%\n📍 {adresse}\n📱 {telephone}\n"
             f"📅 {commande['date']}\n\n"
             f"👉 `/repondre {uid} votre message`",
