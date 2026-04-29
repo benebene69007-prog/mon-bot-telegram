@@ -51,12 +51,44 @@ def get_webapp_url():
     return f"{WEBAPP_URL}?products={produits_json}&promos={promos_json}"
 
 # ── Serveur web pour servir webapp.html ────────────────────────────────────────
+import asyncio
+BOT_APP = None
+
 class WebHandler(SimpleHTTPRequestHandler):
     def log_message(self, format, *args): pass
     def do_GET(self):
         if self.path == "/" or self.path == "":
             self.path = "/webapp.html"
         return SimpleHTTPRequestHandler.do_GET(self)
+    def do_POST(self):
+        if self.path == "/commande":
+            length = int(self.headers.get('Content-Length', 0))
+            body = self.rfile.read(length)
+            try:
+                order = json.loads(body)
+                # Envoyer notification admin via le bot
+                asyncio.run_coroutine_threadsafe(
+                    send_commande_admin(order),
+                    BOT_APP.loop if BOT_APP else asyncio.get_event_loop()
+                )
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                self.wfile.write(b'{"ok":true}')
+            except Exception as e:
+                logging.error(f"Erreur commande: {e}")
+                self.send_response(500)
+                self.end_headers()
+        else:
+            self.send_response(404)
+            self.end_headers()
+    def do_OPTIONS(self):
+        self.send_response(200)
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'POST, GET, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+        self.end_headers()
 
 def start_web_server():
     server = HTTPServer(("0.0.0.0", PORT), WebHandler)
@@ -118,6 +150,49 @@ def menu_statut(cmd_id):
     kb = [[InlineKeyboardButton(s, callback_data=f"statut_{cmd_id}_{i}")] for i, s in enumerate(STATUTS)]
     kb.append([InlineKeyboardButton("⬅️ Retour", callback_data="admin_commandes")])
     return InlineKeyboardMarkup(kb)
+
+async def send_commande_admin(order):
+    try:
+        data = load()
+        cmd_id = f"CMD{data.get('compteur_commande', 1):03d}"
+        data["compteur_commande"] = data.get("compteur_commande", 1) + 1
+        user_info = order.get("user") or {}
+        prenom = user_info.get("first_name", "Client") if isinstance(user_info, dict) else "Client"
+        username = user_info.get("username", "—") if isinstance(user_info, dict) else "—"
+        user_id = user_info.get("id", 0) if isinstance(user_info, dict) else 0
+
+        commande = {
+            "id": cmd_id,
+            "user": f"{prenom} (@{username})",
+            "user_id": user_id,
+            "items": order.get("items", []),
+            "produit": ", ".join([i["nom"] for i in order.get("items", [])]),
+            "total": order.get("total", 0),
+            "remise": order.get("remise", 0),
+            "adresse": order.get("adresse", "—"),
+            "telephone": order.get("telephone", "—"),
+            "statut": "📦 Commande reçue",
+            "date": datetime.now().strftime("%d/%m/%Y %H:%M"),
+        }
+        data["commandes"].append(commande)
+        save(data)
+
+        items_text = "\n".join([f"  • {i['nom']} x{i['qty']} — {i['prix']}" for i in order.get("items", [])])
+        if BOT_APP:
+            await BOT_APP.bot.send_message(
+                ADMIN_ID,
+                f"🛒 *Nouvelle commande {cmd_id} !*\n\n"
+                f"👤 {prenom} (@{username})\n\n"
+                f"{items_text}\n\n"
+                f"💰 Total : {order.get('total', 0)}€\n"
+                f"📍 {order.get('adresse', '—')}\n"
+                f"📱 {order.get('telephone', '—')}\n"
+                f"📅 {commande['date']}\n\n"
+                f"👉 `/repondre {user_id} votre message`",
+                parse_mode="Markdown"
+            )
+    except Exception as e:
+        logging.error(f"Erreur send_commande_admin: {e}")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = load()
@@ -406,11 +481,12 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
 def main():
-    # Démarrer le serveur web dans un thread séparé
+    global BOT_APP
     web_thread = threading.Thread(target=start_web_server, daemon=True)
     web_thread.start()
 
     app = Application.builder().token(TOKEN).build()
+    BOT_APP = app
     app.add_handler(CommandHandler("start",      start))
     app.add_handler(CommandHandler("admin",      admin_cmd))
     app.add_handler(CommandHandler("repondre",   repondre_cmd))
