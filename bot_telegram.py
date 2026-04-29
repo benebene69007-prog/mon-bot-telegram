@@ -203,14 +203,14 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         texte = f"*{p['nom']}*\n\n📝 {p.get('desc','')}\n\n📦 Choisir la quantité :"
         if p.get("video"):
             try:
-                await q.message.reply_video(video=p["video"], caption=texte, parse_mode="Markdown", reply_markup=menu_variantes(i))
                 await q.delete_message()
+                await q.message.chat.send_video(video=p["video"], caption=texte, parse_mode="Markdown", reply_markup=menu_variantes(i))
                 return
             except: pass
         elif p.get("photo"):
             try:
-                await q.message.reply_photo(photo=p["photo"], caption=texte, parse_mode="Markdown", reply_markup=menu_variantes(i))
                 await q.delete_message()
+                await q.message.chat.send_photo(photo=p["photo"], caption=texte, parse_mode="Markdown", reply_markup=menu_variantes(i))
                 return
             except: pass
         await q.edit_message_text(texte, parse_mode="Markdown", reply_markup=menu_variantes(i))
@@ -363,7 +363,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif etape == "desc":
             context.user_data["nouveau_produit"]["desc"] = txt
             context.user_data["ajout_etape"] = "photo"
-            await update.message.reply_text("4️⃣ 📸 Envoie la *photo* directement ou tape SKIP :", parse_mode="Markdown")
+            await update.message.reply_text("4️⃣ 📸 Envoie une *photo* ou une *vidéo* du produit, ou tape SKIP :", parse_mode="Markdown")
         elif etape == "photo":
             context.user_data["nouveau_produit"]["photo"] = "" if txt.upper() == "SKIP" else txt
             context.user_data["ajout_etape"] = "badge"
