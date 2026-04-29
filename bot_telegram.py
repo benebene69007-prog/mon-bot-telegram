@@ -426,15 +426,17 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     if not is_admin(uid): return
     data = load()
-    photo_file_id = update.message.photo[-1].file_id
+    photo = update.message.photo[-1]
+    file = await photo.get_file()
+    photo_url = file.file_path  # URL publique Telegram
 
     if context.user_data.get("ajout_etape") == "photo":
-        context.user_data["nouveau_produit"]["photo"] = photo_file_id
+        context.user_data["nouveau_produit"]["photo"] = photo_url
         context.user_data["ajout_etape"] = "badge"
         await update.message.reply_text("✅ Photo !\n\n5️⃣ *Badge* (ex: Nouveau) ou SKIP :", parse_mode="Markdown")
     elif context.user_data.get("edit_field") == "photo" and "edit_index" in context.user_data:
         i = context.user_data.pop("edit_index"); context.user_data.pop("edit_field")
-        data["produits"][i]["photo"] = photo_file_id; save(data)
+        data["produits"][i]["photo"] = photo_url; save(data)
         await update.message.reply_text("✅ Photo mise à jour !", reply_markup=menu_admin())
 
 def main():
