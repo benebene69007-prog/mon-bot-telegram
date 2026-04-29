@@ -674,7 +674,7 @@ function openProduct(i) {
 
   if (p.variantes && p.variantes.length > 0) {
     variantesContainer.style.display = 'block';
-    qtyControl.style.display = 'none';
+    qtyControl.style.display = 'flex';
     modalPrice.textContent = '';
     variantesList.innerHTML = p.variantes.map((v, vi) => `
       <div onclick="selectVariante(${vi})" id="variante_${vi}" style="
@@ -686,7 +686,8 @@ function openProduct(i) {
         <span style="color:var(--accent);font-family:'Bebas Neue',sans-serif;font-size:22px">${v.prix}</span>
       </div>
     `).join('');
-    document.getElementById('modalTotal').textContent = p.variantes[0].prix;
+    document.getElementById('modalTotal').textContent = p.variantes[0].prix + ' x1';
+    document.getElementById('qtyValue').textContent = 1;
   } else {
     variantesContainer.style.display = 'none';
     qtyControl.style.display = 'flex';
@@ -705,40 +706,39 @@ function selectVariante(vi) {
     const el = document.getElementById(`variante_${idx}`);
     if (el) el.style.borderColor = idx === vi ? 'var(--accent)' : 'var(--border)';
   });
-  document.getElementById('modalTotal').textContent = p.variantes[vi].prix;
-}
-
-function closeModal(e) {
-  if (e.target === document.getElementById('productModal'))
-    document.getElementById('productModal').classList.remove('open');
+  const qty = parseInt(document.getElementById('qtyValue').textContent) || 1;
+  document.getElementById('modalTotal').textContent = p.variantes[vi].prix + ' x' + qty;
 }
 
 function changeQty(delta) {
   currentQty = Math.max(1, currentQty + delta);
   document.getElementById('qtyValue').textContent = currentQty;
   const p = produits[currentProduct];
-  document.getElementById('modalTotal').textContent = `${p.prix} x${currentQty}`;
+  if (p.variantes && p.variantes.length > 0) {
+    const v = p.variantes[window.selectedVariante || 0];
+    document.getElementById('modalTotal').textContent = v.prix + ' x' + currentQty;
+  } else {
+    document.getElementById('modalTotal').textContent = `${p.prix} x${currentQty}`;
+  }
 }
 
 function addToCart() {
   const p = produits[currentProduct];
-  let nomPanier, prixPanier, qtyPanier;
+  let nomPanier, prixPanier;
 
   if (p.variantes && p.variantes.length > 0) {
     const v = p.variantes[window.selectedVariante || 0];
-    nomPanier = `${p.nom} (${v.quantite})`;
+    nomPanier = `${p.nom} — ${v.quantite}`;
     prixPanier = v.prix;
-    qtyPanier = 1;
   } else {
     nomPanier = p.nom;
     prixPanier = p.prix;
-    qtyPanier = currentQty;
   }
 
   const key = `${currentProduct}_${window.selectedVariante}`;
   const ex = cart.find(c => c.key === key);
-  if (ex) ex.qty += qtyPanier;
-  else cart.push({ key, id: currentProduct, nom: nomPanier, prix: prixPanier, photo: p.photo, qty: qtyPanier });
+  if (ex) ex.qty += currentQty;
+  else cart.push({ key, id: currentProduct, nom: nomPanier, prix: prixPanier, photo: p.photo, qty: currentQty });
 
   updateCartCount();
   document.getElementById('productModal').classList.remove('open');
@@ -818,29 +818,46 @@ function passerCommande() {
   if (!adresse) { alert('📍 Entre ton adresse de livraison'); return; }
   if (!tel) { alert('📱 Entre ton numéro de téléphone'); return; }
   if (!cart.length) { alert('🛒 Ton panier est vide'); return; }
-  const total = cart.reduce((s,c) => s+c.prix*c.qty, 0);
+
+  function extractPrix(p) {
+    if (typeof p === 'number') return p;
+    const match = String(p).match(/(\d+)/);
+    return match ? parseInt(match[1]) : 0;
+  }
+
+  const total = cart.reduce((s,c) => s + extractPrix(c.prix) * c.qty, 0);
   const totalApres = remise ? Math.round(total*(1-remise/100)) : total;
+
   const orderData = {
-    items: cart.map(c => ({ nom: c.nom, qty: c.qty, prix: c.prix*c.qty })),
+    items: cart.map(c => ({ nom: c.nom, qty: c.qty, prix: c.prix })),
     total: totalApres, remise, adresse, telephone: tel
   };
   if (tg) tg.sendData(JSON.stringify(orderData));
   closeCart();
-  showSuccess(totalApres);
+  showSuccess(totalApres, cart, adresse, tel);
 }
 
-function showSuccess(total) {
+function showSuccess(total, items, adresse, tel) {
   document.querySelector('.header').style.display = 'none';
   document.querySelector('.hero').style.display = 'none';
   document.querySelector('.section-title').style.display = 'none';
   document.getElementById('productsGrid').style.display = 'none';
+  const recap = items.map(c => `• ${c.nom} x${c.qty} — ${c.prix}`).join('<br>');
   const el = document.createElement('div');
   el.className = 'success-screen';
   el.style.display = 'flex';
   el.innerHTML = `
     <div class="success-icon">✅</div>
     <div class="success-title">Commande Envoyée !</div>
-    <p class="success-msg">Ta commande de ${total}€ a bien été reçue.<br>Tu vas être contacté rapidement. 🚀</p>
+    <div style="background:rgba(255,255,255,0.05);border-radius:14px;padding:16px;margin:16px 0;text-align:left;width:100%;max-width:320px">
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase">Récapitulatif</p>
+      <p style="font-size:14px;line-height:1.8">${recap}</p>
+      <hr style="border-color:rgba(255,255,255,0.1);margin:12px 0">
+      <p style="font-size:13px">📍 ${adresse}</p>
+      <p style="font-size:13px">📱 ${tel}</p>
+      <p style="font-size:13px;margin-top:8px;color:var(--accent);font-weight:600">💵 Paiement en espèces à la livraison</p>
+    </div>
+    <p class="success-msg">Tu vas être contacté rapidement pour la livraison. 🚀</p>
   `;
   document.querySelector('.content').appendChild(el);
 }
