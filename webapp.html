@@ -643,7 +643,9 @@ function renderProduits() {
     return `
     <div class="product-card" style="animation-delay:${i*0.08}s" onclick="openProduct(${i})">
       <div class="product-img">
-        ${p.photo ? `<img src="${p.photo}" alt="${p.nom}" onerror="this.style.display='none'">` : '📦'}
+        ${p.photo && p.photo.endsWith('.mp4') ? 
+          `<video src="${p.photo}" autoplay muted loop playsinline style="width:100%;height:100%;object-fit:cover"></video>` :
+          p.photo ? `<img src="${p.photo}" alt="${p.nom}" onerror="this.style.display='none'">` : '📦'}
         ${p.badge ? `<div class="product-badge">${p.badge}</div>` : ''}
       </div>
       <div class="product-info">
@@ -665,7 +667,9 @@ function openProduct(i) {
   document.getElementById('modalName').textContent = p.nom;
   document.getElementById('modalDesc').textContent = p.desc;
   const imgEl = document.getElementById('modalImg');
-  imgEl.innerHTML = p.photo ? `<img src="${p.photo}" alt="${p.nom}">` : '📦';
+  imgEl.innerHTML = p.photo && p.photo.endsWith('.mp4') 
+    ? `<video src="${p.photo}" autoplay muted loop playsinline style="width:100%;height:100%;object-fit:cover"></video>`
+    : p.photo ? `<img src="${p.photo}" alt="${p.nom}">` : '📦';
 
   const variantesContainer = document.getElementById('variantesContainer');
   const variantesList = document.getElementById('variantesList');
@@ -828,16 +832,33 @@ async function passerCommande() {
   const total = cart.reduce((s,c) => s + extractPrix(c.prix) * c.qty, 0);
   const totalApres = remise ? Math.round(total*(1-remise/100)) : total;
 
+  const user = tg ? tg.initDataUnsafe?.user : null;
   const orderData = {
     items: cart.map(c => ({ nom: c.nom, qty: c.qty, prix: c.prix })),
-    total: totalApres, remise, adresse, telephone: tel
+    total: totalApres, remise, adresse, telephone: tel, user
   };
 
-  if (tg && tg.sendData) {
-    tg.sendData(JSON.stringify(orderData));
+  // Essayer sendData d'abord (fonctionne si ouvert via bouton inline)
+  try {
+    if (tg && tg.sendData) {
+      tg.sendData(JSON.stringify(orderData));
+    }
+  } catch(e) {}
+
+  // Toujours envoyer via fetch aussi pour garantir la réception
+  try {
+    await fetch('https://mon-bot-telegram-production-d0ae.up.railway.app/commande', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(orderData)
+    });
+  } catch(e) {
+    console.log('Fetch error:', e);
   }
 
   closeCart();
+  showSuccess(totalApres, cart, adresse, tel);
+}
   showSuccess(totalApres, cart, adresse, tel);
 }
 
