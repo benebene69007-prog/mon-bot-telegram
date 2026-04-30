@@ -604,28 +604,14 @@ let remise = 0;
 let promos = {};
 
 function loadProduits() {
-  // Essayer d'abord via URL params
-  const params = new URLSearchParams(window.location.search);
-  const data = params.get('products');
-  const promosData = params.get('promos');
-  
-  if (promosData) {
-    try { promos = JSON.parse(decodeURIComponent(promosData)); } catch(e) {}
-  }
-  
-  if (data) {
-    try { 
-      produits = JSON.parse(decodeURIComponent(data));
-      renderProduits();
-      return;
-    } catch(e) {}
-  }
-
-  // Si URL trop longue ou vide, charger via API
-  fetch('https://mon-bot-telegram-production-d0ae.up.railway.app/produits')
-    .then(r => r.json())
-    .then(d => { produits = d.produits || []; promos = d.promos || {}; renderProduits(); })
-    .catch(() => { produits = []; renderProduits(); });
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const data = params.get('products');
+    const promosData = params.get('promos');
+    if (promosData) try { promos = JSON.parse(decodeURIComponent(promosData)); } catch(e) {}
+    if (data) try { produits = JSON.parse(decodeURIComponent(data)); } catch(e) {}
+  } catch(e) {}
+  renderProduits();
 }
 
 function renderProduits() {
