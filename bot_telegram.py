@@ -44,6 +44,18 @@ class WebHandler(BaseHTTPRequestHandler):
     def log_message(self, *args): pass
     def do_GET(self):
         path = self.path.split("?")[0].lstrip("/")
+        
+        # API produits
+        if path == "produits":
+            data = load()
+            resp = json.dumps({"produits": data.get("produits",[]), "promos": data.get("codes_promo",{})}, ensure_ascii=False)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(resp.encode())
+            return
+
         if path == "" or path == "webapp.html":
             fname = "webapp.html"
         elif path.startswith("media/"):
