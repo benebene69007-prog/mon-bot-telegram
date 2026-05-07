@@ -5,30 +5,67 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import quote
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
+import psycopg2
+from psycopg2.extras import RealDictCursor
 
 logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s", level=logging.INFO)
 
 TOKEN    = "8616508368:AAH6P6rlQXU0ZzQl6SSjC9OW8ZEbPkZABHQ"
 ADMIN_ID = 8464360679
-DATA_FILE = "boutique_data.json"
 WEBAPP_URL = "https://mon-bot-telegram-production-d0ae.up.railway.app/webapp.html"
 PORT = int(os.environ.get("PORT", 8080))
+DATABASE_URL = os.environ.get("DATABASE_URL")
 STATUTS = ["📦 Commande reçue", "✅ Confirmée", "🔄 En préparation", "🚚 En livraison", "✅ Livrée"]
+
+def get_db():
+    return psycopg2.connect(DATABASE_URL)
+
+def init_db():
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS boutique (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
+                )
+            """)
+            conn.commit()
 
 DEFAULT_DATA = {
     "bienvenue": "👋 Bonjour *{prenom}* ! Bienvenue chez *Allo J'arrive 69* 🚀\n\nChoisis une option 👇",
     "produits": [], "commandes": [], "avis": [],
     "codes_promo": {"BIENVENUE": 10, "VIP20": 20},
-    "compteur_commande": 1,
+    "compteur_commande": 1, "support_tel": "Non défini",
 }
 
 def load():
-    if os.path.exists(DATA_FILE):
-        with open(DATA_FILE, "r", encoding="utf-8") as f: return json.load(f)
-    return DEFAULT_DATA.copy()
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT key, value FROM boutique")
+                rows = cur.fetchall()
+                data = DEFAULT_DATA.copy()
+                for key, value in rows:
+                    try: data[key] = json.loads(value)
+                    except: data[key] = value
+                return data
+    except Exception as e:
+        logging.error(f"DB load error: {e}")
+        return DEFAULT_DATA.copy()
 
 def save(data):
-    with open(DATA_FILE, "w", encoding="utf-8") as f: json.dump(data, f, ensure_ascii=False, indent=2)
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                for key, value in data.items():
+                    val = json.dumps(value, ensure_ascii=False) if not isinstance(value, str) else json.dumps(value)
+                    cur.execute("""
+                        INSERT INTO boutique (key, value) VALUES (%s, %s)
+                        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+                    """, (key, val))
+                conn.commit()
+    except Exception as e:
+        logging.error(f"DB save error: {e}")
 
 def is_admin(uid): return uid == ADMIN_ID
 
@@ -77,7 +114,7 @@ def menu_produits_commander(panier=[]):
     data = load()
     kb = [[InlineKeyboardButton(f"{p['nom']}", callback_data=f"cmd_produit_{i}")] for i,p in enumerate(data["produits"])]
     if panier:
-        kb.append([InlineKeyboardButton(f"✅ Valider le panier ({len(panier)} article{'s' if len(panier)>1 else ''})", callback_data="cmd_valider_panier")])
+        kb.append([InlineKeyboardButton(f"✅ Valider ({len(panier)} article{'s' if len(panier)>1 else ''})", callback_data="cmd_valider_panier")])
         kb.append([InlineKeyboardButton("🗑️ Vider le panier", callback_data="cmd_vider_panier")])
     kb.append([InlineKeyboardButton("⬅️ Retour", callback_data="menu")])
     return InlineKeyboardMarkup(kb)
@@ -90,7 +127,7 @@ def menu_variantes(i):
         for vi, v in enumerate(p["variantes"]):
             kb.append([InlineKeyboardButton(f"{v['quantite']} — {v['prix']}", callback_data=f"cmd_variante_{i}_{vi}")])
     else:
-        kb.append([InlineKeyboardButton(f"Commander — {p.get('prix','')}", callback_data=f"cmd_variante_{i}_0")])
+        kb.append([InlineKeyboardButton(f"Commander", callback_data=f"cmd_variante_{i}_0")])
     kb.append([InlineKeyboardButton("⬅️ Retour", callback_data="menu_commander")])
     return InlineKeyboardMarkup(kb)
 
@@ -104,7 +141,7 @@ def menu_admin():
         [InlineKeyboardButton("📋 Commandes",       callback_data="admin_commandes")],
         [InlineKeyboardButton("📊 Stats",           callback_data="admin_stats")],
         [InlineKeyboardButton("🎟️ Codes promo",    callback_data="admin_promos")],
-        [InlineKeyboardButton("📱 Numéro support",  callback_data="admin_support")],
+        [InlineKeyboardButton("📱 Numéro Signal",   callback_data="admin_support")],
         [InlineKeyboardButton("✏️ Message /start",  callback_data="admin_bienvenue")],
         [InlineKeyboardButton("🌐 Voir boutique",   web_app=WebAppInfo(url=get_webapp_url()))],
     ])
@@ -225,7 +262,6 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.update({"nouveau_produit": {}, "ajout_etape": "nom"})
         await q.edit_message_text("➕ *Nouveau produit*\n\n1️⃣ Envoie le *nom* :", parse_mode="Markdown")
     elif d == "admin_stats" and is_admin(uid):
-        ca = sum([c.get("total",0) if isinstance(c.get("total"),int) else 0 for c in data["commandes"]])
         await q.edit_message_text(f"📊 *Stats :*\n\n📦 Commandes : {len(data['commandes'])}\n📦 Produits : {len(data['produits'])}", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Retour", callback_data="admin_menu")]]))
     elif d == "admin_commandes" and is_admin(uid):
         commandes = data["commandes"]
@@ -293,7 +329,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if is_admin(uid) and context.user_data.get("edit_field") == "support_tel":
         data["support_tel"] = txt; save(data); context.user_data.pop("edit_field")
-        await update.message.reply_text(f"✅ Numéro Signal mis à jour !", reply_markup=menu_admin()); return
+        await update.message.reply_text("✅ Numéro Signal mis à jour !", reply_markup=menu_admin()); return
 
     if is_admin(uid) and "edit_field" in context.user_data and "edit_index" in context.user_data:
         field = context.user_data.pop("edit_field"); i = context.user_data.pop("edit_index")
@@ -316,7 +352,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif etape == "desc":
             context.user_data["nouveau_produit"]["desc"] = txt
             context.user_data["ajout_etape"] = "photo"
-            await update.message.reply_text("4️⃣ 📸 Envoie la *photo* directement ou tape SKIP :", parse_mode="Markdown")
+            await update.message.reply_text("4️⃣ 📸 Envoie la *photo* ou tape SKIP :", parse_mode="Markdown")
         elif etape == "photo":
             context.user_data["nouveau_produit"]["photo"] = "" if txt.upper() == "SKIP" else txt
             context.user_data["ajout_etape"] = "badge"
@@ -422,6 +458,7 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("✅ Photo mise à jour !", reply_markup=menu_admin())
 
 def main():
+    init_db()
     threading.Thread(target=start_web_server, daemon=True).start()
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
