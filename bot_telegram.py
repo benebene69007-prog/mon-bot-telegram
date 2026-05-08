@@ -5,8 +5,6 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import quote
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
-import psycopg2
-from psycopg2.extras import RealDictCursor
 
 logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s", level=logging.INFO)
 
@@ -14,25 +12,8 @@ TOKEN    = "8616508368:AAH6P6rlQXU0ZzQl6SSjC9OW8ZEbPkZABHQ"
 ADMIN_ID = 8464360679
 WEBAPP_URL = "https://mon-bot-telegram-production-d0ae.up.railway.app/webapp.html"
 PORT = int(os.environ.get("PORT", 8080))
-DATABASE_URL = os.environ.get("DATABASE_URL")
+DATA_FILE = "/data/boutique.json"
 STATUTS = ["📦 Commande reçue", "✅ Confirmée", "🔄 En préparation", "🚚 En livraison", "✅ Livrée"]
-
-def get_db():
-    url = DATABASE_URL
-    if url and url.startswith("postgres://"):
-        url = url.replace("postgres://", "postgresql://", 1)
-    return psycopg2.connect(url, sslmode='require')
-
-def init_db():
-    with get_db() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS boutique (
-                    key TEXT PRIMARY KEY,
-                    value TEXT NOT NULL
-                )
-            """)
-            conn.commit()
 
 DEFAULT_DATA = {
     "bienvenue": "👋 Bonjour *{prenom}* ! Bienvenue chez *Allo J'arrive 69* 🚀\n\nChoisis une option 👇",
@@ -43,32 +24,20 @@ DEFAULT_DATA = {
 
 def load():
     try:
-        with get_db() as conn:
-            with conn.cursor() as cur:
-                cur.execute("SELECT key, value FROM boutique")
-                rows = cur.fetchall()
-                data = DEFAULT_DATA.copy()
-                for key, value in rows:
-                    try: data[key] = json.loads(value)
-                    except: data[key] = value
-                return data
-    except Exception as e:
-        logging.error(f"DB load error: {e}")
-        return DEFAULT_DATA.copy()
+        os.makedirs(os.path.dirname(DATA_FILE), exist_ok=True)
+        if os.path.exists(DATA_FILE):
+            with open(DATA_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+    except: pass
+    return DEFAULT_DATA.copy()
 
 def save(data):
     try:
-        with get_db() as conn:
-            with conn.cursor() as cur:
-                for key, value in data.items():
-                    val = json.dumps(value, ensure_ascii=False) if not isinstance(value, str) else json.dumps(value)
-                    cur.execute("""
-                        INSERT INTO boutique (key, value) VALUES (%s, %s)
-                        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
-                    """, (key, val))
-                conn.commit()
+        os.makedirs(os.path.dirname(DATA_FILE), exist_ok=True)
+        with open(DATA_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
     except Exception as e:
-        logging.error(f"DB save error: {e}")
+        logging.error(f"Save error: {e}")
 
 def is_admin(uid): return uid == ADMIN_ID
 
@@ -430,7 +399,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             context.user_data.pop(k, None)
         await update.message.reply_text(
             f"✅ *Commande #{cmd_id} confirmée !*\n\n{items_text}\n\n"
-            f"🎟️ Remise : {remise}%\n📍 {adresse}\n📱 {txt}\n💵 Paiement en espèces 🙏",
+            f"📍 {adresse}\n📱 {txt}\n💵 Paiement en espèces 🙏",
             parse_mode="Markdown", reply_markup=menu_principal()
         )
         await update.get_bot().send_message(ADMIN_ID,
@@ -461,7 +430,6 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("✅ Photo mise à jour !", reply_markup=menu_admin())
 
 def main():
-    init_db()
     threading.Thread(target=start_web_server, daemon=True).start()
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
