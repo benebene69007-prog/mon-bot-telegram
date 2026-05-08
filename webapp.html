@@ -233,7 +233,16 @@ let produits=[], cart=[], currentProduct=null, currentQty=1, selectedVariante=0,
     if(pr) try{promos=JSON.parse(decodeURIComponent(pr));}catch(e){}
     if(d) try{produits=JSON.parse(decodeURIComponent(d));}catch(e){}
   }catch(e){}
-  renderProduits();
+  
+  if(!produits||!produits.length){
+    // Charger depuis le serveur si URL vide
+    fetch('https://mon-bot-telegram-production-d0ae.up.railway.app/produits')
+      .then(r=>r.json())
+      .then(d=>{produits=d.produits||[];promos=d.promos||{};renderProduits();})
+      .catch(()=>renderProduits());
+  } else {
+    renderProduits();
+  }
 })();
 
 function renderProduits(){
