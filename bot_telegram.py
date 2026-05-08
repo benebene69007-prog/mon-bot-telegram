@@ -10,7 +10,7 @@ logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s", level=lo
 
 TOKEN    = "8616508368:AAH6P6rlQXU0ZzQl6SSjC9OW8ZEbPkZABHQ"
 ADMIN_ID = 8464360679
-WEBAPP_URL = "https://mon-bot-telegram-production-d0ae.up.railway.app/webapp.html"
+WEBAPP_URL = "https://mon-bot-telegram-one.vercel.app"
 PORT = int(os.environ.get("PORT", 8080))
 DATA_FILE = "/data/boutique.json"
 STATUTS = ["📦 Commande reçue", "✅ Confirmée", "🔄 En préparation", "🚚 En livraison", "✅ Livrée"]
